@@ -1,0 +1,58 @@
+package com.usermanagement.controller;
+import com.usermanagement.service.StaffService;
+
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.usermanagement.entity.Staff;
+
+
+@RestController
+@RequestMapping("staff")
+public class StaffController {
+
+  
+
+	@Autowired
+	StaffService staffService;
+
+    
+
+	@GetMapping("AllStaff")
+	public List<Staff> getAllStaff() {
+		return staffService.getAllStaff();
+	}
+	
+	@GetMapping("/occupation/{occupation}")
+	public List<Staff> getStaffByOccupation(@PathVariable String occupation) {
+		return staffService.getStaffByOccupation(occupation);
+	}
+	
+	@PostMapping("addStaff")
+	public String addStaff(@RequestBody Staff staff){
+		return staffService.addStaff(staff);
+	}
+	
+	
+	@PutMapping("/update/{code}")
+	public String updateStaff(@PathVariable Long code, @RequestBody Staff staff) {
+		return staffService.updateStaff(code, staff);
+	}
+	
+	@DeleteMapping("/delete/{code}")
+	public void DeleteStaff(@PathVariable Long code) {
+		staffService.deleteStaffByCode(code);
+	}
+	
+
+}

@@ -1,0 +1,17 @@
+package com.billingmanagement.feign;
+
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+
+import com.billingmanagement.dto.ReservationDTO;
+
+@FeignClient(name="RESERVATIONMANAGEMENT",url="http://localhost:7007")
+public interface ReservationFeign {
+	
+	
+	@GetMapping("/reservationdetails/{reservationId}")
+	public ReservationDTO getReservationDetails(Integer reservationId);
+	
+
+}

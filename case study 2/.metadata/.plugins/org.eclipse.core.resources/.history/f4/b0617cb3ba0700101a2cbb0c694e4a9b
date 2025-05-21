@@ -1,0 +1,66 @@
+ package com.usermanagement.service;
+
+import java.util.List;
+import java.util.Optional;
+
+import com.usermanagement.entity.Guest;
+import com.usermanagement.exception.GuestNotFoundException;
+import com.usermanagement.repository.GuestRepository;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@Service
+public class GuestService {
+	
+	@Autowired
+	GuestRepository guestRepository;
+	
+	
+	public List<Guest> getAllGuests(){
+		return guestRepository.findAll();
+	}
+	
+	public Guest getUserByEmail(String email){
+		return  guestRepository.findByEmail(email);
+	}
+	
+	public String addGuest(Guest guest) {
+		guestRepository.save(guest);
+		return "guest added Successfully";
+	}
+	
+	
+	
+	public Guest getGuestByCompany(String phonenumber) {
+		return guestRepository.findByCompany(phonenumber);
+	}
+
+	public List<Guest> getGuestByGender(String gender) {
+		return guestRepository.findByGender(gender);
+	}
+	
+	public Optional<Guest> getGuestById(Long guestId){
+		return guestRepository.findById(guestId);
+	}
+	public String updateGuest( Long guestId, Guest updatedGuest) {
+		Guest existingGuest= guestRepository.findById(guestId)
+				.orElseThrow(() -> new GuestNotFoundException("Guest not found with ID: " + guestId));
+			existingGuest.setAddress(updatedGuest.getAddress());
+			existingGuest.setName(updatedGuest.getName());
+			existingGuest.setCompany(updatedGuest.getCompany());
+			existingGuest.setEmail(updatedGuest.getEmail());
+			existingGuest.setGender(updatedGuest.getGender());
+			existingGuest.setPhonenumber(updatedGuest.getPhonenumber());
+		guestRepository.save(existingGuest);
+		return "Database updated successfully";
+    
+	}
+	/*public String updateGuest(Long memberid) {
+		Guest g1= guestRepository.findById(memberid).get();
+		g1.setName("")
+		return "guest updated successfully"; 
+	}*/
+
+}

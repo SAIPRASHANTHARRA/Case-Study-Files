@@ -1,0 +1,286 @@
+package com.reservationmanagement.service;
+
+import com.reservationmanagement.dto.GuestDTO;
+import com.reservationmanagement.dto.RoomDTO;
+import com.reservationmanagement.entity.Reservation;
+import com.reservationmanagement.exception.GuestNotFoundException;
+import com.reservationmanagement.exception.InvalidDatesException;
+import com.reservationmanagement.exception.ReservationNotFoundException;
+import com.reservationmanagement.exception.RoomDetailsException;
+import com.reservationmanagement.exception.RoomsNotAvailableException;
+import com.reservationmanagement.feign.GuestFeign;
+import com.reservationmanagement.feign.RoomsFeign;
+import com.reservationmanagement.repository.ReservationRepository;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+
+@Service
+public class ReservationService {
+
+	@Autowired
+	ReservationRepository reservationRepository;
+	
+	@Autowired 
+	GuestFeign guestFeign;
+	
+	@Autowired
+	RoomsFeign roomFeign;
+	
+	@Autowired
+	EmailService emailService;
+	
+	private static final Logger logger = LoggerFactory.getLogger(ReservationService.class);
+
+	
+	public Reservation addReservation(Reservation reservation) {
+		
+		logger.info("Attempting to add reservation for Guest ID: {}, Room No: {}", reservation.getGuestId(), reservation.getRoomno());
+
+		GuestDTO g1 = guestFeign.getGuestById(reservation.getGuestId());
+		
+		if (g1==null) {
+			logger.warn("Guest not found with Guest ID: {}", reservation.getGuestId());
+			throw new GuestNotFoundException("Guest not found with GuestId:"+reservation.getGuestId());
+	}
+		if (!g1.getEmail().equals(reservation.getEmail()) || !g1.getGuestId().equals(reservation.getGuestId())) {
+			 
+			 logger.warn("Guest details mismatch for Email: {} and Guest ID: {}", 
+                     reservation.getEmail(), reservation.getGuestId());
+			throw new GuestNotFoundException("Guest not found with Email: "+reservation.getEmail()+ " and guestId: "+reservation.getGuestId());
+		}
+		if(reservation.getCheckinDate().isAfter(reservation.getCheckoutDate())) {
+			logger.warn("Invalid date range: Check-in {} is after Check-out {}", reservation.getCheckinDate(), reservation.getCheckoutDate());
+			throw new InvalidDatesException("Check out Date cannot be after the check In Date");
+		}	
+		
+		RoomDTO roomDetails=	roomFeign.getRoomByRoomNo(reservation.getRoomno());
+		if (roomDetails == null) {
+			logger.warn("Room not found with Room No: {}", reservation.getRoomno());
+		    throw new RoomDetailsException("Room not found with room number: " + reservation.getRoomno());
+		}
+		
+		if (!roomDetails.getType().equals(reservation.getRoom_type()) || !roomDetails.getCapacity().equals(reservation.getCapacity())) {
+			logger.warn("Room details mismatch for Room No: {}, Type: {}, Capacity: {}", reservation.getRoomno(), reservation.getRoom_type(), reservation.getCapacity());
+			throw new RoomDetailsException("Room Details Error: Mismatch room type "+reservation.getRoom_type() +" with capacity "+ reservation.getCapacity()+" with room number "+ reservation.getRoomno());
+		}
+		
+	
+		
+		 boolean available = isRoomAvailable(reservation.getRoomno(),reservation.getCheckinDate(),reservation.getCheckoutDate());
+	        if (!available) {
+	            throw new RoomsNotAvailableException("Room number " + reservation.getRoomno() + " is already booked for selected days");
+	        }
+		 reservation.setNo_of_nights_extended(0);
+
+	 logger.info("Reservation successfully added with ID: {}", reservation.getReservation_code());
+
+	 Reservation savedReservation = reservationRepository.save(reservation);
+     emailService.sendReservationConfirmationEmail(savedReservation);
+     
+		return savedReservation;
+	}
+	
+	
+	public List<Reservation> getReservation(){
+		logger.info("Fetching all reservations");
+		return reservationRepository.findAll();
+	}
+	
+	public Reservation updateReservation(Integer reservationId,Reservation updated) {
+		 logger.info("Updating reservation with ID: {}", reservationId);
+		Reservation existing = reservationRepository.findById(reservationId).orElseThrow(()-> new ReservationNotFoundException("Reservation not found with reservtionId"+reservationId));
+		    GuestDTO guest = guestFeign.getGuestById(updated.getGuestId());
+		    if (guest == null) {
+		    	logger.warn("Guest not found with ID: {}", updated.getGuestId());
+		        throw new GuestNotFoundException("Guest not found with ID: " + updated.getGuestId());
+		    }
+
+		    if (!guest.getEmail().equals(updated.getEmail()) || !guest.getGuestId().equals(updated.getGuestId())) {
+		    	 logger.warn("Guest details mismatch for Email: {} and Guest ID: {}", updated.getEmail(), updated.getGuestId());
+		        throw new GuestNotFoundException("Guest details mismatch: Email " + updated.getEmail() + " and ID " + updated.getGuestId());
+		    }
+
+		    if (updated.getCheckinDate().isAfter(updated.getCheckoutDate())) {
+		    	logger.warn("Invalid date range: Check-in {} is after Check-out {}", updated.getCheckinDate(), updated.getCheckoutDate());
+		        throw new InvalidDatesException("Check-out date cannot be before check-in date.");
+		    }
+		     
+		    RoomDTO roomDetails = roomFeign.getRoomByRoomNo(updated.getRoomno());
+		    if (roomDetails == null) {
+		    	logger.warn("Room not found with Room No: {}", updated.getRoomno());
+		        throw new RoomDetailsException("Room not found with room number: " + updated.getRoomno());
+		    }
+
+		    if (!roomDetails.getType().equals(updated.getRoom_type()) || !roomDetails.getCapacity().equals(updated.getCapacity())) {
+		        throw new RoomDetailsException("Mismatch: Room type " + updated.getRoom_type() + " and capacity " + updated.getCapacity() + " does not match room number " + updated.getRoomno());
+		    }
+
+	        if (updated.getCheckoutDate().isAfter(existing.getCheckoutDate())) {
+	            boolean isAvailable = isRoomAvailable(existing.getRoomno(), existing.getCheckoutDate().plusDays(1), updated.getCheckoutDate());
+	            if (!isAvailable) {
+	                logger.warn("Extension not possible. Room No: {} is already booked for the extended dates", existing.getRoomno());
+	                throw new RoomsNotAvailableException("Extension not possible. Room is already booked for the extended dates. Please book another room.");
+	            }
+	        }
+
+		Integer originalstay = Math.toIntExact(ChronoUnit.DAYS.between(existing.getCheckinDate(),existing.getCheckoutDate()));
+		Integer extendedstay = Math.toIntExact(ChronoUnit.DAYS.between(updated.getCheckinDate(), updated.getCheckoutDate()));
+		
+		Integer extendedCheckin = 0;
+			if(updated.getCheckinDate().isAfter(existing.getCheckinDate())) {
+					extendedCheckin=Math.toIntExact(ChronoUnit.DAYS.between(existing.getCheckinDate(), updated.getCheckinDate()));
+			}
+		Integer extendedCheckout = 0;
+				if(updated.getCheckoutDate().isAfter(existing.getCheckoutDate())) {
+			extendedCheckout=	Math.toIntExact(ChronoUnit.DAYS.between(existing.getCheckoutDate(), updated.getCheckoutDate()));
+				}			
+		if(originalstay == extendedstay) {
+			existing.setNo_of_nights_extended(0);
+		}else {
+			existing.setNo_of_nights_extended(extendedCheckin+extendedCheckout);
+		}
+		
+		existing.setCheckinDate(updated.getCheckinDate());
+		existing.setCheckoutDate(updated.getCheckoutDate());
+		existing.setNo_of_adults(updated.getNo_of_adults());
+		existing.setNo_of_children(updated.getNo_of_children());
+		existing.setRoomno(updated.getRoomno());
+		existing.setRoom_type(updated.getRoom_type());
+		existing.setCapacity(updated.getCapacity());
+		
+	
+		Reservation reserved=reservationRepository.save(existing);
+        logger.info("Reservation with ID {} updated successfully", reservationId);
+
+		return reserved;
+
+	}
+
+	public List<RoomDTO> getAvailableRoomsByTypeAndCapacity( String type, Integer capacity, LocalDate checkinDate, LocalDate checkoutDate){
+		logger.info("Fetching available rooms with Type: {} and Capacity: {}", type, capacity);
+		List<RoomDTO> candidateRooms = roomFeign.getAvailableRooms(type, capacity);
+		
+		List<RoomDTO> availableRooms = new ArrayList<>();
+		
+		for(RoomDTO room: candidateRooms) {
+			boolean isAvailable = isRoomAvailable(room.getRoomno(),checkinDate,checkoutDate);
+			if(isAvailable) {
+				availableRooms.add(room);
+			}
+		}
+			if (availableRooms.isEmpty()) {
+		        throw new RoomsNotAvailableException("No available rooms for type " + type + " and capacity " + capacity +
+		                " between " + checkinDate + " and " + checkoutDate);
+		}
+		return availableRooms;
+	}
+
+	public void updateRoomStatus(Integer roomno, String status) {
+		logger.info("Updating status of Room No: {} to {}", roomno, status);
+		roomFeign.updateRoomStatus(roomno, status);
+	}
+
+	public String cancelReservation(Integer reservationId) {
+		 logger.info("Cancelling reservation with ID: {}", reservationId);
+	    Reservation existingReservation = reservationRepository.findById(reservationId)
+	            .orElseThrow(() -> new ReservationNotFoundException("Reservation not found with ID: " + reservationId));
+	    roomFeign.updateRoomStatus(existingReservation.getRoomno(), "Available");
+	    reservationRepository.deleteById(reservationId);
+	    logger.info("Reservation with ID {} successfully cancelled", reservationId);
+	    return "Reservation with ID " + reservationId + " has been successfully cancelled.";
+	}
+
+	public Reservation getReservationDetails(Integer reservationId) {
+		logger.info("Fetching details for reservation ID: {}", reservationId);
+		Reservation r= reservationRepository.findById(reservationId).orElseThrow(()-> new ReservationNotFoundException ("Reservation not found with Id: "+ reservationId));
+		
+		return r;
+	}
+	
+	public Reservation getReservationDetailsByRoomno(Integer roomno) {
+		logger.info("Fetching details for roomno: {}", roomno);
+		return reservationRepository.getReservationByRoomno(roomno);
+	}
+	
+	public boolean isRoomAvailable(Integer roomno, LocalDate checkinDate, LocalDate
+			checkoutDate) {
+	    List<Reservation> existingReservations = reservationRepository
+	        .findByRoomnoAndCheckinDateLessThanEqualAndCheckoutDateGreaterThanEqual(roomno, checkoutDate, checkinDate);
+	    
+	    
+	    
+	    return existingReservations.isEmpty();  // If empty, room is available
+	}
+
+	
+	public List<Reservation> getReservationByCheckinDateAndCheckoutDate(LocalDate checkinDate,LocalDate checkoutDate) {
+		
+		if(checkinDate.isAfter(checkoutDate)) {
+			logger.warn("Invalid date range: Check-in {} is after Check-out {}", checkinDate, checkoutDate);
+			throw new InvalidDatesException("Check out Date cannot be after the check In Date");
+		}
+		List<Reservation> reserveddates =reservationRepository.getReservationByCheckinDateAndCheckoutDate( checkinDate,checkoutDate);
+		
+		if (reserveddates.isEmpty()) {
+			throw new ReservationNotFoundException("No Reservations done between dates "+checkinDate+" and "+ checkoutDate);
+		}
+		
+		return reserveddates;
+	} 
+	
+	public List<RoomDTO> getAvailableRooms(LocalDate checkin, LocalDate checkout){
+		List <RoomDTO> allRooms = roomFeign.getAllRooms();
+		List<RoomDTO> available = new ArrayList<>();
+		
+		for(RoomDTO room: allRooms) {
+			if(isRoomAvailable(room.getRoomno(),checkin,checkout)) {
+				available.add(room);
+			}
+		}
+		return available;
+	}
+	
+	public List<RoomDTO> getOccupiedRooms(LocalDate checkin, LocalDate checkout){
+		List<RoomDTO> allRooms = roomFeign.getAllRooms();
+		List<RoomDTO> occupied= new ArrayList<>();
+		
+		for(RoomDTO room: allRooms) {
+			if(!isRoomAvailable(room.getRoomno(),checkin,checkout)){
+				room.setStatus("Occupied");
+				occupied.add(room);
+			}
+		}
+		if (occupied.isEmpty()) {
+			throw new ReservationNotFoundException("No occupied rooms for specified dates");
+		}
+		return occupied;
+	}
+	
+	public List<Reservation> getReservationsByGuestId(Long guestId){
+		
+		List<Reservation> allReservations = reservationRepository.findAll() ;
+		List<Reservation> reservationByGuestId=new ArrayList<>();
+		GuestDTO g2 = guestFeign.getGuestById(guestId);
+		
+		for (Reservation reservation:allReservations) {
+			if (g2.getEmail().equals(reservation.getEmail())) {
+				reservationByGuestId.add(reservation);
+			}
+		}
+		
+		return reservationByGuestId;
+	}
+	
+	
+}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Page</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+    <button id="pay-button">Pay Now</button>
+
+    <script>
+        document.getElementById('pay-button').onclick = function() {
+            const billId = 4; // Replace with dynamic value if needed10
+            fetch(`http://localhost:7008/payment/create-payment/${billId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" }
+            })
+            .then(response => response.json())
+            .then(order => {
+                const options = {
+                    key: "rzp_test_qzPqRJERBlv58Z", // Razorpay key
+                    amount: order.amount,
+                    currency: order.currency,
+                    order_id: order.id,
+                    handler: function (response) {
+                        alert("Payment Successful! Payment ID: " + response.razorpay_payment_id);
+                    }
+                };
+                const rzp = new Razorpay(options);
+                rzp.open();
+            })
+            .catch(error => console.error("Error:", error));
+        };
+    </script>
+</body>
+</html>

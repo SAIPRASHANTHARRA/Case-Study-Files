@@ -1,0 +1,5 @@
+package com.reservationmanagement.service;
+
+public class EmailService {
+
+}

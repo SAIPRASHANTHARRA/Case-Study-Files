@@ -1,0 +1,5 @@
+package com.billingmanagement.services;
+
+public class EmailService {
+
+}

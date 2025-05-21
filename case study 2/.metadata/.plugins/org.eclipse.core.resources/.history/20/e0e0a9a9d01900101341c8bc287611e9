@@ -1,0 +1,69 @@
+package com.reservationmanagement.controller;
+
+import com.reservationmanagement.dto.GuestDTO;
+import com.reservationmanagement.dto.RoomDTO;
+import com.reservationmanagement.entity.Reservation;
+import com.reservationmanagement.feign.GuestFeign;
+import com.reservationmanagement.feign.RoomsFeign;
+import com.reservationmanagement.service.ReservationService;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+
+@ExtendWith(MockitoExtension.class)
+public class ReservationControllerTest {
+
+    @InjectMocks
+    private ReservationController reservationController;
+
+    @Mock
+    private ReservationService reservationService;
+
+    @Mock
+    private RoomsFeign roomFeign;
+
+    @Mock
+    private GuestFeign guestFeign;
+
+    private Reservation mockReservation;
+    private RoomDTO mockRoomDTO;
+    private GuestDTO mockGuestDTO;
+
+    @BeforeEach
+    void setup() {
+        mockReservation = new Reservation();
+        mockReservation.setReservationId(1);
+        mockReservation.setGuestId(101L);
+
+        mockRoomDTO = new RoomDTO();
+        mockRoomDTO.setRoomNo(202);
+        mockRoomDTO.setType("Deluxe");
+
+        mockGuestDTO = new GuestDTO();
+        mockGuestDTO.setGuestId(101L);
+        mockGuestDTO.setFirstName("John");
+    }
+
+    @Test
+    void testAddReservation() {
+        when(reservationService.addReservation(any(Reservation.class))).thenReturn(mockReservation);
+
+        Reservation result = reservationController.addReservation(mockReservation);
+        assertEquals(mockReservation.getReservationId(), result.getReservationId());
+    }
+
+    @Test
+    void testGetAllReservations()
